@@ -129,6 +129,19 @@ async function fetchOllamaModels(host) {
   return (data.models || []).map(m => m.name);
 }
 
+
+// ── Proxy resolver ─────────────────────────────────────────────────────────────
+// Routes known CORS-blocked APIs through the local Vite proxy (/nvidia)
+// so both dev (Vite proxy) and prod (Vercel rewrites) work transparently.
+
+function resolveBase(url) {
+  const cleaned = url.replace(/\/$/, "");
+  if (cleaned.includes("integrate.api.nvidia.com")) {
+    return window.location.origin + "/nvidia";
+  }
+  return cleaned;
+}
+
 // ── Markdown renderer ──────────────────────────────────────────────────────────
 
 function parseLine(line) {
@@ -247,13 +260,24 @@ export default function ResearchAssistant() {
   const testCustomAPI = useCallback(async () => {
     setCustomStatus("checking");
     try {
-      const res = await fetch(`${customBaseUrl.replace(/\/$/, "")}/v1/models`, {
-        headers: { ...(customApiKey && { Authorization: `Bearer ${customApiKey}` }) },
-        signal: AbortSignal.timeout(5000),
+      const base = resolveBase(customBaseUrl);
+      const res = await fetch(`${base}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(customApiKey && { Authorization: `Bearer ${customApiKey}` }),
+        },
+        body: JSON.stringify({
+          model: customModel,
+          messages: [{ role: "user", content: "hi" }],
+          max_tokens: 1,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(10000),
       });
       setCustomStatus(res.ok ? "ok" : "error");
-    } catch { setCustomStatus("error"); }
-  }, [customBaseUrl, customApiKey]);
+    } catch { /* ignore connection errors */ setCustomStatus("error"); }
+  }, [customBaseUrl, customApiKey, customModel]);
 
   // ── SearXNG test
   const testSearx = useCallback(async (host = searxHost) => {
@@ -340,7 +364,7 @@ Guidelines:
       if (backend === "ollama") {
         reply = await callOllama({ host: ollamaHost, model: ollamaModel, messages: llmMessages, onToken });
       } else {
-        reply = await callCustomAPI({ baseUrl: customBaseUrl, apiKey: customApiKey, model: customModel, messages: llmMessages, onToken });
+        reply = await callCustomAPI({ baseUrl: resolveBase(customBaseUrl), apiKey: customApiKey, model: customModel, messages: llmMessages, onToken });
       }
 
       setStreamText("");
