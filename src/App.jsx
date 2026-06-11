@@ -85,7 +85,7 @@ async function callOllama({ host, model, messages, onToken }) {
       try {
         const token = JSON.parse(line)?.message?.content || "";
         if (token) { full += token; onToken(full); }
-      } catch (_) { }
+      } catch { /* ignore malformed JSON */ }
     }
   }
   return full;
@@ -116,7 +116,7 @@ async function callCustomAPI({ baseUrl, apiKey, model, messages, onToken }) {
       try {
         const token = JSON.parse(trimmed)?.choices?.[0]?.delta?.content || "";
         if (token) { full += token; onToken(full); }
-      } catch (_) { }
+      } catch { /* ignore malformed JSON */ }
     }
   }
   return full;
@@ -238,10 +238,10 @@ export default function ResearchAssistant() {
     try {
       const models = await fetchOllamaModels(host);
       setOllamaModels(models.length ? models : DEFAULT_OLLAMA_MODELS);
-      if (models.length && !models.includes(ollamaModel)) setOllamaModel(models[0]);
+      setOllamaModel(prev => (models.length && !models.includes(prev) ? models[0] : prev));
       setOllamaStatus("ok");
     } catch { setOllamaStatus("error"); }
-  }, [ollamaHost, ollamaModel]);
+  }, [ollamaHost]);
 
   // ── Custom API test
   const testCustomAPI = useCallback(async () => {
@@ -264,7 +264,7 @@ export default function ResearchAssistant() {
     } catch { setSearxStatus("error"); }
   }, [searxHost]);
 
-  useEffect(() => { connectOllama(); }, []);
+  useEffect(() => { connectOllama(); }, [connectOllama]);
 
   // ── File processing
   const processFiles = async (files) => {
@@ -275,7 +275,7 @@ export default function ResearchAssistant() {
         const text = await file.text();
         if (!text.trim()) continue;
         setDocs(prev => [...prev, { id: crypto.randomUUID(), name: file.name, size: file.size, text, chunks: chunkText(text), addedAt: Date.now() }]);
-      } catch (_) { }
+      } catch { /* ignore malformed JSON */ }
     }
     setProcessingFiles(false);
   };
